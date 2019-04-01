@@ -1,0 +1,74 @@
+1. 下载及解压
+
+我下的是最新版的5.7.17，虽然网上资料较少，但技术最新，不能总用老版本的说
+
+网站：http://dev.mysql.com/downloads/mysql
+
+下载：http://img.blog.csdn.net/20161219202411100?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQvc2NoYW8xNA==/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center
+
+解压至：C:\Program Files\mysql-5.7.17-winx64
+
+2. 配置
+
+将解压后的my-default.ini配置文件复制一份到C:\windows下，重命名为my.ini。
+
+my.ini里内容如下：
+
+[mysqld]
+basedir=C:\Program Files\mysql-5.7.17-winx64
+datadir=C:\Program Files\mysql-5.7.17-winx64\data
+
+sql_mode=NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES 这个要放在[WinMySQLadmin]，[client]两个上面，不然会出错
+
+[WinMySQLadmin]
+Server=C:\Program Files\mysql-5.7.17-winx64\bin\mysqld.exe
+user=root
+password=
+[client]
+default_character_set=utf8
+
+这里的地址就是你安装的地址，如果你和我安装的位置不同，要改一下哦。
+
+3. 安装
+
+用管理员身份运行命令行，然后进入mysql文件下的bin文件夹里（大家都会蛤）， 
+
+
+
+在执行之前，需要手动在mysql根目录下创建一下data目录。否则会执行异常。每次执行初始化动作时，也要将data目录下的文件全部删除，再执行初始化。否则也会执行失败。
+
+
+
+1、mysqld --initialize-insecure ,这步是创建data目录，要稍等一会。
+
+        这一步完成后，需检查下data目录下是否创建成功performance_schema、mysql、sys这三个文件夹。如果没有这三个文件夹，表示执行失败。
+
+失败原因在当前data目录下的*.err文件中查看。
+                **：特别注意ini文件中参数是下划线，不是中横线。
+
+
+2、mysqld  --install mysql
+
+这里的mysql5是自己取的服务名，如何提示服务名被占用的话，你可以使用sc delete 服务名，来删除。
+
+切记安装新的mysql要把以前的先停止运行net stop 服务名，再把服务名删除，不要以为删掉文件夹就万事大吉了，否则会出现许多意料之外的错误。
+
+然后启动mysql，net start mysql5
+
+登陆mysql，mysql -u root -p
+
+这里会要求我们输密码，这里也是经常出错的地方
+
+对于mysql5.7.17， 初始化时创建了临时密码，在mysql安装文件下的data文件夹的DESKTOP-OFGA4DU.err里，可能因为版本不同名字不同，但只有一个err文件，就是他。
+
+注意打开后，从上往下看第一个【note】，
+
+http://img.blog.csdn.net/20161219205253223?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQvc2NoYW8xNA==/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center
+
+之后成功进入，修改密码 alter user 'root'@'localhost' identified by '新密码';
+
+ flush privileges;
+
+quit;
+
+再以新密码登陆就可以了
