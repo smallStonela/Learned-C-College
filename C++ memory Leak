@@ -1,0 +1,203 @@
+在C++中解决内存泄漏的有效方法是使用智能指针（Smart Pointer）。智能指针和普通指针的用法类似，只是不需要手动释放内存，而是通过智能指针自己管理内存释放。
+智能指针是存储指向动态分配（堆）对象指针的类，用于生存期控制，能够确保在离开指针所在作用域时，自动正确的销毁动态分配的对象，防止内存泄漏。它的一种通用
+实现技术是使用引用计数，每使用它一次，内部的引用计数加1，每析构一次，内部引用计数减1，减为0时，删除所指向的堆内存。
+
+C++11 提供了3种智能指针：std::shared_ptr、std::uniq_ptr、std::weak_ptr，头文件为<memory>
+
+一、shared_ptr 共享的智能指针：
+  一:初始化：
+  通过 构造函数、std::make_shared<T>辅助函数、reset方法来初始化shared_ptr，优先使用make_shared来构造智能指针
+  std::shared_ptr<int> p(new int(1));
+  std::shared_ptr<int> p2=p;
+  std::shared_ptr<int> ptr;
+  ptr.reset(new int(1));
+
+  对于一个未初始化的智能指针，可以通过reset方法来初始化。
+  当智能指针中有值的时候，调用reset会使引用计数减1，
+  通过重载bool类型操作符来判断智能指针中是否为空
+
+  获取原始指针：当需要获取原始指针时，可以通过get方法来返回原始指针
+  std::shared_ptr<int> ptr(new int(1));
+  int *p=ptr.get();
+  二:删除共享指针
+  (1)删除指针：
+    (1)指定删除器：当p的引用计数为0时，自动调用删除器DeleteIntPtr 来释放对象的内存
+    void DeleteIntPtr(int* p)
+    {
+      delete p;
+    }
+    std::shared_ptr<int> p(new int,DeleteIntPtr); //当p的引用计数为0了，就销毁p
+    (2)
+    lambda表达式也可以    
+    std::shared_ptr<int> p(new int,[](int *p){delete p;});
+
+  (2)删除数组指针
+    (1)shared_ptr管理动态数组时，需要强制指定删除器，默认的删除器不支持数组删除指针。
+    std::shared_ptr<int> p(new int[10],[](int *p){delete[] p;});
+  
+    (2)
+    void DeleteIntPtr(int* p[])
+    {
+      delete[] p;
+    }
+    (3)std::shared_ptr<int> p(new int[],DeleteIntPtr); //当p的引用计数为0了，就销毁p
+  
+    (4)也可以将std::default_delete 作为删除器。default_delete的内部是通过调用delete来实现功能的：推荐
+    std::shared_ptr<int> p(new int[10],std::default_delete<int[]>);
+
+注意：
+(1) 不能将一个原始指针直接赋值给一个智能指针
+    std::shared_ptr<int> p=new int(1);//编译报错，不允许直接赋值
+(2) 不要用一个原始指针初始化多个shared_ptr,例如下面这些事错误的
+    int *ptr=new int;
+    shared_ptr<int> p1(ptr);
+    shared_ptr<int> p2(ptr);//logic error
+(3) 不要在函数实参中创建shared_ptr
+    function (shared_ptr<int> (new int),g());//有缺陷
+    正确的写法应该是先创建智能指针：    shared_ptr<int> p(new int());   f(p,g());
+(4) 通过shared_from_this()返回this指针。不要将this指针作为shared_ptr返回出来，因为this指针本质上是一个裸指针，因此，这样可能会导致重复析构。
+    shared_ptr<A> GetSelf()
+   {
+       return shared_ptr<S>(this);//不要这样做！！！
+   }
+   正确做法：让目标类通过派生std::enable_shared_from_this<T>类，然后使用基类的成员函数shared_from_this来返回shared_ptr
+   class A:public std::enable_shared_from_this<A>
+   {
+    public:
+      std::shared_ptr<A> GetSelf()
+      {
+        return shared_from_this();
+      }
+    };
+    std::shared_ptr<A> spy(new A);
+    std::shared_ptr<A> p=spy->GetSelf();  //正确
+
+(5) 要避免循环引用。智能指针最大的一个陷阱是循环引用，循环引用会导致内存泄露:
+    class A
+    {
+        std::shared_ptr<B> bptr;
+        ~A(){cout<<"A is deleted!"<<endl;}
+    };
+    class B
+    {
+        std::shared_ptr<A> aptr;
+        ~B(){cout<<"B is deleted!"<<endl;}
+    };
+    void TestPtr()
+    {
+        {
+            std::shared_ptr<A> ap(new A);
+            std::shared_ptr<B> bp(new B);
+            ap->bptr = bp;
+           bp->aptr = ap;
+        }
+}
+//解决方式，在类A、类B中生命的shared_ptr指针有一个为弱引用指针weak_ptr ，即可解决问题 
+二、unique_ptr 独占的智能指针
+  unique_ptr是一个独占型的智能指针，它不允许其他智能指针共享其内部的指针.
+  1、初始化  
+  (1)不允许通过赋值将一个unique_ptr赋值给另外一个unique_ptr。
+        unique_ptr<T> myPtr(new T);
+        unique_ptr<T> myOtherPtr=myPtr;//错误！！ 不能复制
+  (2)unique_ptr不允许复制，可以通过函数返回给其他的unique_ptr,可以通过std::move来转移到其他的unique_ptr,之后它就不在拥有原来指针的所有权.
+        unique_ptr<T> myPtr(new T); //OK
+        unique_ptr<T> myOtherPtr=std::move(myPtr);//OK
+  (3)unique_ptr除了独占性这个特点之外，还可以指向一个数组
+        std::unique_ptr<int []> ptr(new int[10]);
+        ptr[9]=9;//设置最后一个元素为9
+  2、删除指针，指定删除器
+  (1)std::unique_ptr指定删除器的时候需要确定删除器的类型
+        std::unique_ptr<int,std::function<void(int*)>> ptr(new int(1),[&](int* p){delete p;});
+  (2)自定义unique_ptr的删除器
+        void Deleter(Connection *connection)
+        {
+            delete connection;
+        }
+        unique_ptr<Connection, decltype(Deleter)*> up(new Connection("unique_ptr"), Deleter);
+        另一种使用方法:
+        class CConnnect
+        {
+            void Disconnect() { PRINT_FUN(); }  
+        };
+        class Deleter
+        {
+        public:
+            void operator() (CConnnect* obj)
+            {
+                delete obj;
+            }
+        };
+        std::unique_ptr<CConnnect, Deleter> up2(new CConnnect, up1.get_deleter());
+三、weak_ptr 弱引用的智能指针
+  弱引用指针weak_ptr是用来监视shared_ptr的，不会使引用计数加1，它不管理shared_ptr内部的指针，主要是为了监视shared_ptr的生命周期，
+  更像是shared_ptr的一个助手
+  (1)初始化:
+      1:通过use_count()方法来获得当前观测资源的引用计数.
+        shared_ptr<int> sp(new int(10));
+        weak_ptr<int> wp(sp);
+        cout<<wp.use_count()<<endl;//结果将输出1
+      2:通过expired()方法来判断所观测的资源是否已被释放.
+        shared_ptr<int> sp(new int(10));
+        weak_ptr<int> wp(sp);
+        if(wp.expired())
+        {
+          std::cout<<"weak_ptr 无效，所监视的智能指针已被释放"<<endl;
+        }
+        else
+        {
+            std::cout<<"weak_ptr有效"<<endl;
+        }
+        //结果输出：weak_ptr有效
+      3:通过lock方法来获取所监视的shared_ptr.
+        std::weak_ptr<int> gw;
+        void f()
+        {
+          if(gw.expired())//所监视的shared_ptr是否释放
+          {
+              std::cout<<"gw is expired"<<endl;
+          }
+          else
+          {
+              auto spt=gw.lock();
+              std::cout<<*spt<<endl;
+          }
+        }
+
+        int main()
+        {
+          {
+              auto sp=std::make_shared<int>(42);
+              gw=sp;
+              f();
+          }
+          f();
+        }
+        //输出：42  gw is expired
+      4:weak_ptr返回this指针
+        提到不能直接将this指针返回为shared_ptr,需要通过派生std::enable_shared_from_this类，
+        并通过其他方法shared_form_this来返回智能指针,因为std::enable_shared_from_this类中有一个weak_ptr，这个weak_ptr用来观测this智能指针，
+        调用shared_from_this()方法时，会调用内部这个weak_ptr的lock方法，将所观测的shared_ptr返回.
+      5:weak_ptr 解决循环引用问题
+            class A
+            {
+               std::shared_ptr<B> bptr;
+                ~A(){cout<<"A is deleted!"<<endl;}
+            };
+            class B
+            {
+                std::weak_ptr<A> aptr;    //这样修改即可
+                ~B(){cout<<"B is deleted!"<<endl;}
+            };
+            void TestPtr()
+            {
+                {
+                    std::shared_ptr<A> ap(new A);
+                    std::shared_ptr<B> bp(new B);
+                    ap->bptr = bp;
+                    bp->aptr = ap;
+                }
+            }
+  (3)
+  (4)
+  (5)
+
