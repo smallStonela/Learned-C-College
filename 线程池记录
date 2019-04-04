@@ -536,3 +536,5 @@ int main()
     getchar();
      return 0;
 }
+
+记录一个C++11的线程池地址 https://github.com/lzpong/threadpool，可以学习。
