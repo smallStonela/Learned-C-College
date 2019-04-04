@@ -1,0 +1,347 @@
+Server.h
+
+#pragma once
+#include <winsock2.h>
+#include <iostream>
+#include <process.h>
+#include <windows.h>
+#pragma comment(lib, "ws2_32.lib") 
+
+using namespace std;
+
+class Server
+{
+public:
+	Server();
+	virtual ~Server();
+public:
+	int m_accept();
+	void start();
+	void close();
+	void receiveMessage();
+	void sendMessageTo();
+private:
+	WORD		wVersionRequested;
+	WSADATA		wsaData;
+	SOCKET		listeningSocket;
+	SOCKET		acceptResponse;
+	SOCKADDR_IN serverAddr;
+	SOCKADDR_IN clientAddr;
+private:
+	const int Port = 5150;
+	int error;
+	int length;
+	char sendBuf[1024], hostname[100];
+	char recvBuf[1024] ;
+
+};
+
+Srever.cpp
+
+#include "../Header/Server.h"
+Server::Server()
+{
+	error = 0;
+	length = -1;
+	memset(&serverAddr, 0, sizeof(serverAddr));
+	memset(&clientAddr, 0, sizeof(clientAddr));
+	memset(sendBuf, 0, sizeof(sendBuf));
+	memset(hostname, 0, sizeof(hostname));
+	memset(recvBuf, 0, sizeof(recvBuf));
+}
+
+Server::~Server()
+{
+	error = 0;
+	length = -1;
+	memset(&serverAddr, 0, sizeof(serverAddr));
+	memset(&clientAddr, 0, sizeof(clientAddr));
+	memset(sendBuf, 0, sizeof(sendBuf));
+	memset(hostname, 0, sizeof(hostname));
+	memset(recvBuf, 0, sizeof(recvBuf));
+}
+
+
+void Server::start()
+{
+	wVersionRequested = MAKEWORD(2, 2);
+	error = WSAStartup(wVersionRequested, &wsaData);// 初始化Windows Socket 2.2
+	if (error != 0)
+	{
+		printf("WSAStartup failed error code: %d\n", error);
+	}
+
+	if (LOBYTE(wsaData.wVersion) != 2 || HIBYTE(wsaData.wVersion) != 2)
+	{
+		printf("Could not find a usable version of Winsock.dll\n");
+		WSACleanup();
+		return;
+	}
+	else
+	{
+		printf("Server has been initialed\n");
+	}
+
+	//创建一个新的Socket来响应 客户端的连接请求；
+	//AF_INET字段是表示网络地址的类型，AF_INET表示是internet域中进行通信；
+	//SOCK_STREAM表示socket的类型，SOCK_STREAM表示是流套接字IPPROTO_TCP表明协议类型,IPPROTO_TCP或者0表示TCP/IP协议
+	listeningSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+	serverAddr.sin_family = AF_INET;     // 填写服务器地址信          
+	serverAddr.sin_port = htons(Port);   // 端口为5150
+	serverAddr.sin_addr.s_addr = htonl(INADDR_ANY); //INADDR_ANY表示机器上的所用网络地址
+
+	//绑定监听端口;当调用socket函数创建套接字后，该套接字并没有与本机地址和端口等信息相连，bind函数将完成这些工作
+	error = bind(listeningSocket, (SOCKADDR *)&serverAddr, sizeof(serverAddr));
+	if (error != 0)
+	{
+		printf("bind fail,error code: %d\n", WSAGetLastError());
+	}
+
+	error = listen(listeningSocket, 1);// 第一个参数为要监听的socket描述字，第二个指定最大同时连接数为2
+	if (error != 0)
+	{
+		printf("listen fail,error code: %d\n", WSAGetLastError());
+	}
+
+	length = sizeof(SOCKADDR);
+	memset(&clientAddr, 0, length);
+	acceptResponse = accept(listeningSocket, (SOCKADDR *)&clientAddr, &length);// 接受新的连接
+	if (acceptResponse == INVALID_SOCKET)
+	{
+		printf("accept fail,error code:%d\n",acceptResponse);
+		close();
+		return;
+	}
+}
+void Server::sendMessageTo() 
+{
+	while (true)
+	{
+		memset(sendBuf, 0, sizeof(sendBuf));
+		memset(hostname, 0, sizeof(hostname));
+		memset(recvBuf, 0, sizeof(recvBuf));
+		printf("receive data:");
+		int iLen = recv(acceptResponse, recvBuf, 1024, 0);
+		if (SOCKET_ERROR == iLen) 
+		{
+			printf("receive faile error code: %d \n",iLen);
+			close();
+			break;
+		}
+		else
+		{
+			recvBuf[iLen] = '\0';
+			printf(" %s\n", recvBuf);
+		}
+		if (gethostname(hostname, 100) != 0)
+		{
+			strcpy_s(hostname, strlen("None") + 1, "None");
+		}
+		sprintf_s(sendBuf, sizeof(sendBuf), "Welecome %s connected to %s! \n", inet_ntoa(clientAddr.sin_addr), hostname);
+		error = send(acceptResponse, sendBuf, strlen(sendBuf) + 1, 0);
+		if (error == INVALID_SOCKET)
+		{
+			printf("send faile error code:%d \n", error);
+			break;
+		}
+		memset(sendBuf, 0, sizeof(sendBuf));
+		printf("send data to client:");
+		std::cin >> sendBuf;
+		error = send(acceptResponse, sendBuf, strlen(sendBuf) + 1, 0);
+		if (error == INVALID_SOCKET) 
+		{
+			printf("send faile error code:%d \n",error);
+			break;
+		}
+	}
+}
+
+void Server::receiveMessage() {}
+
+
+
+void Server::close()
+{
+	closesocket(acceptResponse); //关闭连接
+	closesocket(listeningSocket); //并关闭监听Socket
+	WSACleanup();// 释放Windows Socket DLL的相关资源
+}
+
+int main()
+{
+	Server s;
+	s.start();
+	s.sendMessageTo();
+	s.close();
+	return 0;
+}
+
+
+
+client.h
+
+#pragma once
+#include "WinSock2.h"
+#include <thread>
+#include <iostream>
+#pragma comment(lib, "ws2_32.lib")
+
+using namespace std;
+class client
+{
+public:
+	client();
+	virtual ~client();
+
+public:
+	//int m_connect();
+	void start();
+	void close();
+	void receiveMessageTo();
+
+private:
+	WORD wVersionRequested;
+	WSADATA wsaData;
+	SOCKET m_socket;
+	SOCKADDR_IN ServerAddr;
+	const u_short m_port = 5150;
+	const char* ip_addr = "127.0.0.1";
+	int error;
+	int length;
+
+	char sendBuf[1024];
+	char hostname[100];
+	char recvFrom[1024];
+
+};
+
+
+
+client.cpp
+
+#include "../Header/client.h"
+client::client()
+{
+	error = 0;
+	length = -1;
+	memset(&ServerAddr, 0, sizeof(ServerAddr));
+	memset(sendBuf, 0, sizeof(sendBuf));
+	memset(hostname, 0, sizeof(hostname)); 
+	memset(recvFrom, 0, sizeof(recvFrom));
+}
+
+client::~client()
+{
+	error = 0;
+	length = -1;
+	memset(&ServerAddr, 0, sizeof(ServerAddr));
+	memset(sendBuf, 0, sizeof(sendBuf));
+	memset(hostname, 0, sizeof(hostname));
+	memset(recvFrom, 0, sizeof(recvFrom));
+}
+
+
+
+void client::start()
+{
+	wVersionRequested = MAKEWORD(2, 2);
+	WSAStartup(wVersionRequested, &wsaData); //初始化Windows Socket 2.2
+	error = WSAStartup(wVersionRequested, &wsaData); //load win socket  
+	if (error != 0)
+	{
+		printf("WSAStartup failed error code: %d\n", error);
+		return;
+	}
+
+
+	m_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);// 创建一个新的Socket来连接服务器
+	if (m_socket == INVALID_SOCKET)
+	{
+		printf("socket() fail:%d\n", WSAGetLastError());
+		return;
+	}
+
+	ServerAddr.sin_family = AF_INET;
+	ServerAddr.sin_port = htons(m_port);
+	ServerAddr.sin_addr.s_addr = inet_addr(ip_addr);
+
+	int result = -1;
+	while (true)
+	{
+		result = connect(m_socket, (SOCKADDR *)&ServerAddr, sizeof(ServerAddr));// 向服务器发出连接请求,阻塞式
+		if (result == INVALID_SOCKET)
+		{
+			printf("connect fail error code:%d", result);
+			Sleep(100);
+			continue;
+		}
+		else
+		{
+			break;
+		}
+	}
+}
+
+void client::receiveMessageTo() 
+{
+	int input;
+	while (true)
+	{
+		memset(sendBuf, 0, sizeof(sendBuf));
+		memset(hostname, 0, sizeof(hostname));
+
+		printf("input text:");
+		scanf("%d", &input);
+		if (input == -2)
+		{
+			printf("end!");
+			break;
+		}
+
+		if (gethostname(hostname, 100) != 0) //如果没有错误的时候gethostname会返回0;
+		{
+			strcpy_s(hostname, strlen("None") + 1, "None");
+		}
+		printf("hostname:%s \n", hostname);
+		strcpy_s(sendBuf, strlen(hostname) + 1, hostname);
+		strcat_s(sendBuf, sizeof(sendBuf), " have connected to you!");
+		error = send(m_socket, sendBuf, strlen(sendBuf) + 1, 0);
+		if (SOCKET_ERROR == error)
+		{
+			cout << "send failed!" << endl;
+			close();
+			break;
+		}
+		memset(recvFrom, 0, sizeof(recvFrom));
+		error = recv(m_socket, recvFrom, 1024, 0);
+		if (SOCKET_ERROR == error)
+		{
+			cout << "receive failed!" << endl;
+			close();
+			break;
+		}
+		printf("receive from server data: %s \n", recvFrom);
+
+	}
+}
+
+void client::close()
+{
+	closesocket(m_socket);
+	WSACleanup();
+}
+
+int main(int argc, char* argv[])
+{
+	client *c=new client;
+	c->start();
+	c->receiveMessageTo();
+	c->close();
+	return 0;
+}
+
+
+
+
+
